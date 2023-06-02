@@ -32,6 +32,8 @@ from sklearn.model_selection import train_test_split
 
 
 print("done with import libs")
+
+
 # ---------------------> Converting the model to 8 bits <------------------- #
 """
 We convert EleutherAI's GPT-J-6B model to 8 bits using facebook's [bitsandbytes](https://github.com/facebookresearch/bitsandbytes) library. 
@@ -348,27 +350,55 @@ logger.info("done adding adapters: {}".format(gpt))
 
 print("loading dataset")
 # example dataset
-data = pd.read_csv('/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_pgbp_example.csv')
-data['sentence'] = 'Quote: ' + data['sentence']
-train, test = train_test_split(data, test_size=0.01)
+#data = pd.read_csv('/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_pgbp_example.csv')
+#data['sentence'] = 'Quote: ' + data['sentence']
+#train, test = train_test_split(data, test_size=0.01)
 
-train.to_csv('/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_train_pgbp_example.csv', index=False)
-test.to_csv('/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_test_pgbp_example.csv', index=False)
+#train.to_csv('/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_train_pgbp_example.csv', index=False)
+#test.to_csv('/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_test_pgbp_example.csv', index=False)
 
-#dataset = load_dataset("/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_pgbp_example.csv", streaming=True)
-dataset = load_dataset('csv', data_files={'train': '/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_train_pgbp_example.csv',
-                                          'test': '/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_test_pgbp_example.csv'})
+##dataset = load_dataset("/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_pgbp_example.csv", streaming=True)
+#dataset = load_dataset('csv', data_files={'train': '/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_train_pgbp_example.csv', 'test': '/sc/arion/projects/EHR_ML/VIZIEHR2023/gustavecortal_test_pgbp_example.csv'})
+#dataset = load_dataset('json', data_files='/sc/arion/projects/EHR_ML/VIZIEHR2023/VIZIEHR_finetuning_1/diverse_training_ft.tsv')
+pkl_file = 'diverse_training.pkl'
+
+with open(pkl_file, 'rb') as infile:
+    mydf = pd.read_pickle(infile)
+
+logger.info("loading dat: {}".format(mydf))
+
+print(mydf)
+
+id = mydf['id']
+prompts = mydf['test']
+completions = mydf['completion']
+
+formatted_df = pd.DataFrame(columns=['prompt_completion'])
+
+formatted_df['prompt_completion'] = "prompt:"+mydf['test'] + ", completion:"+mydf['completion']+"<|endoftext|>"
+
+train, test = train_test_split(formatted_df, test_size=0.1)
+
+train.to_csv("./diverse_training_train.csv", index=False)
+test.to_csv("./diverse_training_test.csv", index=False)
+
+print("wrote csv files to disk!!")
+
+
+dataset = load_dataset('csv', data_files={'train': 'diverse_training_train.csv', 'test': 'diverse_training_test.csv'})
+
 logger.info("loading dataset: {}".format(dataset))
 
+logger.info("formatting dataset to tokenize them!")
 
 def tokenize_function(examples):
     #num_added_tokens = tokenizer.add_special_tokens({'pad_token': '[PAD]'})
     #print("We have added", num_added_tokens, "tokens")
     
-    return tokenizer(examples["sentence"], padding=True, truncation=True, max_length= 128)
+    return tokenizer(examples['prompt_completion'], padding=True, truncation=True, max_length= 2048)
 
 tokenized_datasets = dataset.map(tokenize_function, batched=True)
-tokenized_datasets = tokenized_datasets.remove_columns(["sentence"])
+tokenized_datasets = tokenized_datasets.remove_columns(['prompt_completion'])
 tokenized_datasets.set_format("torch")
 
 
@@ -478,12 +508,15 @@ logger.info("Finished fine-tuning in {}".format(time.time() - start))
 
 # --------------> Saving fine-tuned model <-----------------#
 try:
-    save_dir = "finetuned_gpt-j-8_bit/gpt-j-6B"
-    os.makedirs(save_dir)
+    save_dir = "./finetuned_gpt-j-8_bit/gpt-j-6B_8bit_VIZIEHR"
+    #os.makedirs(save_dir)
     gpt.save_pretrained(save_dir)
 except Exception as e:
     #print("Error saving model: ", e)
     logger.info("Error saving model: {}".format(e))
+
+
+quit(status=1)
 
 
 
